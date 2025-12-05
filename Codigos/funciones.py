@@ -186,7 +186,7 @@ def update(frame, n_cuerpos, lineas, puntos, ys_radau, ts_radau, texto_tiempo):
         #y_hist = ys_radau[:frame, idx_y]
         
         # Opcional: Si quieres un rastro corto (tipo "cola de cometa"), usa:
-        inicio = max(0, frame - 2000)
+        inicio = max(0, frame - 5000)
         x_hist = ys_radau[inicio:frame, idx_x]
         y_hist = ys_radau[inicio:frame, idx_y]
 

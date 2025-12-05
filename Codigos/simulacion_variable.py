@@ -52,8 +52,8 @@ masas = np.array(masas) # Convierto masas a array también
 
 # Parámetros de simulacion
 t_ini = 0.0 
-h = 0.1   # Paso de tiempos (en años terrestres)
-anios = 100.0
+h = 0.001   # Paso de tiempos (en años terrestres)
+anios = float(input("Ingrese la cantidad de años terrestres a simular (ejemplo: 100): "))
 n_pasos = int(anios/h) # Cantidad de pasos de la simulacion
 # Para saber cuantos años terrestres se simulan, hacer h * n_pasos
 t_fin = t_ini + n_pasos * h
@@ -68,12 +68,30 @@ for i in range(n_cuerpos):
     print(f"Posicion inicial: ({y0_sistema[i*4]:.2f}, {y0_sistema[i*4+1]:.2f}) AU")
     print(f"Velocidad orbital inicial: ({y0_sistema[i*4+2]:.2f}, {y0_sistema[i*4+3]:.2f}) AU/anio")
 
-# Obtengo la aproximacion de RK4 del sistema
+metodos_disponibles = ['RK45', 'Radau']
+metodo = ""
+while metodo not in metodos_disponibles:
+    metodo = input(f"\nIngrese el método de paso variable a utilizar {metodos_disponibles}: ")
+
+tolerancia = float(input("Ingrese la tolerancia relativa deseada (formato: 1e-3, 1e-9): "))
+
+# Obtengo la aproximacion de RK45 del sistema
 print("Calculando simulacion...")
 inicio = time.time()
-ts_rk4, ys_rk4 = fn.RungeKutta4(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+sol = solve_ivp(
+    fun=fn.EDO_Sistema,       # Tu funcion de fisica
+    t_span=(t_ini, t_fin),       # Intervalo de tiempo (inicio, fin)
+    y0=y0_sistema,         # Estado inicial
+    method=metodo,               # El método (Runge-Kutta-Fehlberg 4(5))
+    t_eval=t_eval,               # Puntos donde guardar la solucion
+    rtol=tolerancia,                   # Tolerancia relativa (Precision)
+    atol=1e-9,                   # Tolerancia absoluta
+    args=(masas,)                   # Argumentos adicionales para la funcion
+)
 fin = time.time()
-print(f"\nTiempo de calculo de RK4: {fin - inicio:.2f} segundos\n")
+print(f"\nTiempo de calculo de RK45: {fin - inicio:.2f} segundos\n")
+ts_rk45 = sol.t
+ys_rk45 = sol.y.T
 
 print("Simulacion calculada.")
 
@@ -93,7 +111,7 @@ ax.set_ylim(-limite, limite)
 
 ax.set_aspect('equal') # Para que las orbitas sean circulares, no ovaladas
 ax.grid(True)
-ax.set_title(f"Simulacion N-Cuerpos (RK4) con h={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
+ax.set_title(f"Simulacion N-Cuerpos (RK45), rtol={tolerancia}, pasos={sol.nfev}")
 ax.set_facecolor("white")
 
 lineas = []
@@ -114,11 +132,15 @@ ax.legend(loc="lower right", fontsize='small')
 # interval: milisegundos entre cuadros (20ms = 50 fps)
 # blit=True: optimizacion gráfica (solo redibuja lo que cambia)
 print("Generando grafica (esto tomara un tiempo)...")
-salto = 1
-indices_frames = range(0, len(ts_rk4), salto)
+
+
+salto = 100 
+
+
+indices_frames = range(0, len(ts_rk45), salto)
 
 #Creacion del "video"
-ani = FuncAnimation(fig, fn.update, frames=indices_frames, interval=20, blit=True, fargs=(n_cuerpos, lineas, puntos, ys_rk4, ts_rk4, texto_tiempo))
+ani = FuncAnimation(fig, fn.update, frames=indices_frames, interval=20, blit=True, fargs=(n_cuerpos, lineas, puntos, ys_rk45, ts_rk45, texto_tiempo))
 
 plt.show()
 
@@ -129,7 +151,7 @@ plt.show()
 
 # --- EJECUTAR EL CÁLCULO ---
 print("Verificando conservacion de energia...")
-Energias = fn.Calcular_Energia_Sistema(ys_rk4, masas)
+Energias = fn.Calcular_Energia_Sistema(ys_rk45, masas)
 
 # Calculamos el error relativo: (E_actual - E_inicial) / E_inicial
 # Esto nos dice qué porcentaje de energia se "perdio" o "creo" falsamente
@@ -138,27 +160,25 @@ error_relativo = (Energias - E0) / np.abs(E0)
 
 # --- GRAFICAR ---
 plt.figure(figsize=(10, 5))
-plt.plot(ts_rk4, error_relativo, label='Error Relativo de Energia (RK4)')
-plt.title(f"Validacion: Conservacion de la Energia Total\nh={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
+plt.plot(ts_rk45, error_relativo, label='Error Relativo de Energia (RK45)')
+plt.title(f"Validacion: Conservacion de la Energia Total\nrtol={tolerancia}, tiempo total={n_pasos*h} años terrestres")
 plt.xlabel("Tiempo (Años)")
 plt.ylabel("Error Relativo de Energia")
 plt.grid(True)
 plt.legend()
-
 # Forzamos notacion cientifica para ver la magnitud real
 plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
-
 plt.show()
 
 
 plt.figure(figsize=(10, 6))
 # Usamos semilogy: Eje Y logarítmico, Eje X lineal (tiempo)
-plt.semilogy(ts_rk4, np.abs(error_relativo), label='RK4 (Fijo)')
+plt.semilogy(ts_rk45, np.abs(error_relativo), label='RK45 (Adaptativo)')
 
 # Opcional: Si comparas con Euler
 # plt.semilogy(ts_euler, error_euler, label='Euler (Explícito)')
 
-plt.title(f"Evolución del Error de Energía de RK4 \ncon un h={h} (Escala Logarítmica)")
+plt.title(f"Evolución del Error de Energía de RK45 \ncon una tolerancia relativa de {tolerancia} (Escala Logarítmica)")
 plt.xlabel("Tiempo (Años)")
 plt.ylabel("Log(Error Relativo)")
 plt.grid(True, which="both", ls="-") # Grid para escala log

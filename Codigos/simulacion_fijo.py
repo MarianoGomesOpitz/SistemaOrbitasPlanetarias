@@ -49,11 +49,10 @@ masas = np.array(masas) # Convierto masas a array también
 
 ###################################################################################
 
-
 # Parámetros de simulacion
 t_ini = 0.0 
-h = 0.001   # Paso de tiempos (en años terrestres)
-anios = 100.0
+h = float(input("Ingrese el valor del paso de tiempo h (en años terrestres, ej: 0.0001): "))
+anios = float(input("Ingrese la cantidad de años terrestres a simular (ej: 100): "))
 n_pasos = int(anios/h) # Cantidad de pasos de la simulacion
 # Para saber cuantos años terrestres se simulan, hacer h * n_pasos
 t_fin = t_ini + n_pasos * h
@@ -68,24 +67,27 @@ for i in range(n_cuerpos):
     print(f"Posicion inicial: ({y0_sistema[i*4]:.2f}, {y0_sistema[i*4+1]:.2f}) AU")
     print(f"Velocidad orbital inicial: ({y0_sistema[i*4+2]:.2f}, {y0_sistema[i*4+3]:.2f}) AU/anio")
 
-# Obtengo la aproximacion de Radau del sistema
+metodos = ['euler', 'trapecio', 'rk4']
+metodo_elegido = ""
+while metodo_elegido not in metodos:
+    metodo_elegido = input(f"\nIngrese el método de paso fijo a utilizar ({metodos}): ").lower()
+
+
+# Obtengo la aproximacion de Euler del sistema
 print("Calculando simulacion...")
-tol=1e-12
 inicio = time.time()
-sol = solve_ivp(
-    fun=fn.EDO_Sistema,       # Tu funcion de fisica
-    t_span=(t_ini, t_fin),       # Intervalo de tiempo (inicio, fin)
-    y0=y0_sistema,         # Estado inicial
-    method='Radau',               # El método (Radau)
-    t_eval=t_eval,               # Puntos donde guardar la solucion
-    rtol=tol,                   # Tolerancia relativa (Precision)
-    atol=1e-9,                   # Tolerancia absoluta
-    args=(masas,)                   # Argumentos adicionales para la funcion
-)
+
+match metodo_elegido:
+    case 'euler':
+        ts_ee, ys_ee = fn.EulerExplicito(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+    case 'trapecio':
+        ts_ee, ys_ee = fn.RK2_Trapecio(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+    case 'rk4':
+        ts_ee, ys_ee = fn.RungeKutta4(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+
 fin = time.time()
-print(f"\nTiempo de calculo de Radau: {fin - inicio:.2f} segundos\n")
-ts_radau = sol.t
-ys_radau = sol.y.T
+print(f"\nTiempo de calculo de Euler Explicito: {fin - inicio:.2f} segundos\n")
+
 
 print("Simulacion calculada.")
 
@@ -105,7 +107,7 @@ ax.set_ylim(-limite, limite)
 
 ax.set_aspect('equal') # Para que las orbitas sean circulares, no ovaladas
 ax.grid(True)
-ax.set_title(f"Simulacion N-Cuerpos (Radau), rtol={tol}, pasos={sol.nfev}")
+ax.set_title(f"Simulacion N-Cuerpos (Euler) con h={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
 ax.set_facecolor("white")
 
 lineas = []
@@ -126,11 +128,11 @@ ax.legend(loc="lower right", fontsize='small')
 # interval: milisegundos entre cuadros (20ms = 50 fps)
 # blit=True: optimizacion gráfica (solo redibuja lo que cambia)
 print("Generando grafica (esto tomara un tiempo)...")
-salto = 50 
-indices_frames = range(0, len(ts_radau), salto)
+salto = int(1/(10*h))
+indices_frames = range(0, len(ts_ee), salto)
 
 #Creacion del "video"
-ani = FuncAnimation(fig, fn.update, frames=indices_frames, interval=20, blit=True, fargs=(n_cuerpos, lineas, puntos, ys_radau, ts_radau, texto_tiempo))
+ani = FuncAnimation(fig, fn.update, frames=indices_frames, interval=20, blit=True, fargs=(n_cuerpos, lineas, puntos, ys_ee, ts_ee, texto_tiempo))
 
 plt.show()
 
@@ -141,7 +143,7 @@ plt.show()
 
 # --- EJECUTAR EL CÁLCULO ---
 print("Verificando conservacion de energia...")
-Energias = fn.Calcular_Energia_Sistema(ys_radau, masas)
+Energias = fn.Calcular_Energia_Sistema(ys_ee, masas)
 
 # Calculamos el error relativo: (E_actual - E_inicial) / E_inicial
 # Esto nos dice qué porcentaje de energia se "perdio" o "creo" falsamente
@@ -150,25 +152,29 @@ error_relativo = (Energias - E0) / np.abs(E0)
 
 # --- GRAFICAR ---
 plt.figure(figsize=(10, 5))
-plt.plot(ts_radau, error_relativo, label='Error Relativo de Energia (Radau)')
-plt.title(f"Validacion: Conservacion de la Energia Total\nrtol={tol}, tiempo total={n_pasos*h} años terrestres")
+plt.plot(ts_ee, error_relativo, label='Error Relativo de Energia (Euler Explicito)')
+plt.title(f"Validacion: Conservacion de la Energia Total\nh={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
 plt.xlabel("Tiempo (Años)")
 plt.ylabel("Error Relativo de Energia")
 plt.grid(True)
 plt.legend()
+
+
 # Forzamos notacion cientifica para ver la magnitud real
 plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
+
 plt.show()
+
 
 
 plt.figure(figsize=(10, 6))
 # Usamos semilogy: Eje Y logarítmico, Eje X lineal (tiempo)
-plt.semilogy(ts_radau, np.abs(error_relativo), label='Radau (Adaptativo)')
+plt.semilogy(ts_ee, np.abs(error_relativo), label='Euler (Fijo)')
 
 # Opcional: Si comparas con Euler
 # plt.semilogy(ts_euler, error_euler, label='Euler (Explícito)')
 
-plt.title(f"Evolución del Error de Energía de Radau \ncon una tolerancia relativa de {tol} (Escala Logarítmica)")
+plt.title(f"Evolución del Error de Energía de Euler \ncon un h={h} (Escala Logarítmica)")
 plt.xlabel("Tiempo (Años)")
 plt.ylabel("Log(Error Relativo)")
 plt.grid(True, which="both", ls="-") # Grid para escala log
@@ -184,7 +190,9 @@ print(f"Error maximo relativo: {max_error:.2e}")
 #HTML(ani.to_jshtml())
 
 # Guardar como GIF
-#ani.save('orbita_solar.gif', writer='pillow', fps=30)
+#print("Guardando animacion como GIF...")
+#ani.save('D:/Videos/Euler_0.1.gif', writer='pillow', fps=30)
+#print("Animacion guardada.")
 
 # O Guardar como MP4 (Mejor calidad)
-#ani.save('orbita_solar.mp4', writer='ffmpeg', fps=30)
+#ani.save('D:/Videos/Euler_0.0001.mp4', writer='ffmpeg', fps=30)
