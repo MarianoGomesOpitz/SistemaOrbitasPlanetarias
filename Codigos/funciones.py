@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 #from IPython.display import HTML
-#from scipy.integrate import solve_ivp
+import time
 
 
 # Función de Euler Explícito
@@ -23,7 +23,6 @@ def RK2_Trapecio(f, t0, y0, h, n, masas):
     ts = [t0]
     ys = [y0]
     for i in range(n):
-        # Implementación de Heun (Explícito Trapecio Predictor-Corrector)
         k1 = np.array(f(t0, y0, masas))
         k2 = np.array(f(t0 + h, y0 + h * k1, masas))
         y0 = y0 + 0.5 * h * (k1 + k2)
@@ -32,7 +31,7 @@ def RK2_Trapecio(f, t0, y0, h, n, masas):
         ys.append(y0)
     return np.array(ts), np.array(ys)
 
-# Función de Runge-Kutta 4, el mejor método para este análisis
+# Función de Runge-Kutta 4
 def RungeKutta4(f, t0, y0, h, n, masas):
     y_actual = np.array(y0, dtype=float)
     t_actual = t0
@@ -41,13 +40,11 @@ def RungeKutta4(f, t0, y0, h, n, masas):
     ys = [y_actual.copy()] # Guardo copia inicial
     
     for i in range(n):
-        # Los 4 pasos de RK4
         k1 = np.array(f(t_actual, y_actual, masas))
         k2 = np.array(f(t_actual + 0.5*h, y_actual + 0.5*h*k1, masas))
         k3 = np.array(f(t_actual + 0.5*h, y_actual + 0.5*h*k2, masas))
         k4 = np.array(f(t_actual + h, y_actual + h*k3, masas))
         
-        # Promedio ponderado
         y_actual = y_actual + (h/6.0) * (k1 + 2*k2 + 2*k3 + k4)
         t_actual = t_actual + h
         
@@ -58,7 +55,7 @@ def RungeKutta4(f, t0, y0, h, n, masas):
 
 
 
-# Constante Gravitacional (es igual a 4*pi^2 en relacion con la masa del Son y las distancias son en AU)
+# Constante Gravitacional (es igual a 4*pi^2 en relacion con la masa del Sol y las distancias son en AU)
 G = 4 * (np.pi**2)
 
 def Generar_Sistema(datos_planetas):
@@ -156,6 +153,7 @@ def EDO_Sistema(t, estado, masas):
     # Transformo la matriz de las derivadas en un vector simple
     return derivadas.flatten()
 
+# Función de generación de los elementos gráficos del sistema
 def Generar_Orbita(ax, nombres, colores, tamano_puntos):
     n_cuerpos = len(nombres)
     lineas = []  # Lista de líneas (rastro de cada cuerpo)
@@ -180,12 +178,11 @@ def update(frame, n_cuerpos, lineas, puntos, ys_radau, ts_radau, texto_tiempo):
         idx_x = i * 4
         idx_y = i * 4 + 1
         
-        # 1. Actualizar el rastro (Toda la historia hasta el frame actual)
-        # Si quieres que el rastro sea infinito:
+        # Si se quieres que el rastro de los cuerpos sea infinito (dure toda la animacion):
         #x_hist = ys_radau[:frame, idx_x]
         #y_hist = ys_radau[:frame, idx_y]
         
-        # Opcional: Si quieres un rastro corto (tipo "cola de cometa"), usa:
+        # Si se quiere que el rastro de los cuerpos tenga un largo fijo (ejemplo: 5000 pasos):
         inicio = max(0, frame - 5000)
         x_hist = ys_radau[inicio:frame, idx_x]
         y_hist = ys_radau[inicio:frame, idx_y]
@@ -237,6 +234,7 @@ def Calcular_Energia_Sistema(ys, masas):
                 # U = -G * m1 * m2 / r
                 U -= G * masas[i] * masas[j] / dist
                 
+        # Energia mecanica total = energia cinetica (T) + energia potencial (U)
         energia_total.append(T + U)
         
     return np.array(energia_total)

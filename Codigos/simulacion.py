@@ -1,13 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
-from IPython.display import HTML
+#from IPython.display import HTML
 from scipy.integrate import solve_ivp
 import funciones as fn
-import time
 
-# Aumentar el limite a 100 MB (o lo que necesites)
-plt.rcParams['animation.embed_limit'] = 500.0
+# Limite de tamaño para embeber animaciones en Jupyter Notebooks
+# plt.rcParams['animation.embed_limit'] = 500.0
 
 
 # Base de datos del sistema
@@ -47,18 +46,36 @@ masas = np.array(masas) # Convierto masas a array también
 
 
 
-###################################################################################
+
+
+
+#########################################################################################################
+
+anios = float(input("Ingrese la cantidad de años terrestres a simular (ej: 100): "))
+
+metodos_fijo = ['Euler', 'Trapecio', 'RK4']
+metodos_variable = ['RK45', 'Radau']
+metodo_elegido = ""
+while metodo_elegido not in metodos_fijo + metodos_variable:
+    metodo_elegido = input(f"\nIngrese el método de paso fijo a utilizar ({metodos_fijo + metodos_variable}): ")
 
 # Parámetros de simulacion
 t_ini = 0.0 
-h = float(input("Ingrese el valor del paso de tiempo h (en años terrestres, ej: 0.0001): "))
-anios = float(input("Ingrese la cantidad de años terrestres a simular (ej: 100): "))
+
+h = 0.001   # Valor por defecto, si se usa paso fijo
+tolerancia = 1e-6  # Valor por defecto, si se usa paso variable
+
+if metodo_elegido in metodos_fijo: # Si se selecciona paso fijo, se elige un h
+    h = float(input("Ingrese el valor del paso de tiempo h (en años terrestres, ej: 0.0001): "))
+else: # Si se selecciona paso variable, se elige una tolerancia
+    tolerancia = float(input("Ingrese la tolerancia relativa deseada (formato: 1e-3, 1e-9): "))
+
 n_pasos = int(anios/h) # Cantidad de pasos de la simulacion
 # Para saber cuantos años terrestres se simulan, hacer h * n_pasos
 t_fin = t_ini + n_pasos * h
 t_eval = np.linspace(t_ini, t_fin, n_pasos + 1)
 
-####################################################################################
+###########################################################################################################
 
 print(f"Sistema cargado con {len(nombres)} cuerpos.")
 print(f"\nTiempo de simulacion: {n_pasos*h} años terrestres\n")
@@ -67,26 +84,38 @@ for i in range(n_cuerpos):
     print(f"Posicion inicial: ({y0_sistema[i*4]:.2f}, {y0_sistema[i*4+1]:.2f}) AU")
     print(f"Velocidad orbital inicial: ({y0_sistema[i*4+2]:.2f}, {y0_sistema[i*4+3]:.2f}) AU/anio")
 
-metodos = ['euler', 'trapecio', 'rk4']
-metodo_elegido = ""
-while metodo_elegido not in metodos:
-    metodo_elegido = input(f"\nIngrese el método de paso fijo a utilizar ({metodos}): ").lower()
 
 
-# Obtengo la aproximacion de Euler del sistema
+
+# Calculo de la simulacion
 print("Calculando simulacion...")
 inicio = time.time()
 
-match metodo_elegido:
-    case 'euler':
-        ts_ee, ys_ee = fn.EulerExplicito(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
-    case 'trapecio':
-        ts_ee, ys_ee = fn.RK2_Trapecio(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
-    case 'rk4':
-        ts_ee, ys_ee = fn.RungeKutta4(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+if metodo_elegido in metodos_fijo:
+    match metodo_elegido:
+        case 'Euler':
+            ts, ys = fn.EulerExplicito(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+        case 'Trapecio':
+            ts, ys = fn.RK2_Trapecio(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+        case 'RK4':
+            ts, ys = fn.RungeKutta4(fn.EDO_Sistema, t_ini, y0_sistema, h, n_pasos, masas)
+else:
+    sol = solve_ivp(
+    fun=fn.EDO_Sistema,       # Tu funcion de fisica
+    t_span=(t_ini, t_fin),       # Intervalo de tiempo (inicio, fin)
+    y0=y0_sistema,         # Estado inicial
+    method=metodo_elegido,               # El método (Runge-Kutta-Fehlberg 4(5))
+    t_eval=t_eval,               # Puntos donde guardar la solucion
+    rtol=tolerancia,                   # Tolerancia relativa (Precision)
+    atol=1e-9,                   # Tolerancia absoluta
+    args=(masas,)                   # Argumentos adicionales para la funcion
+    )
+    ts = sol.t
+    ys = sol.y.T
+
 
 fin = time.time()
-print(f"\nTiempo de calculo de Euler Explicito: {fin - inicio:.2f} segundos\n")
+print(f"\nTiempo de calculo de {metodo_elegido}: {fin - inicio:.2f} segundos\n")
 
 
 print("Simulacion calculada.")
@@ -94,9 +123,8 @@ print("Simulacion calculada.")
 # Creacion de la visualizacion de resultados
 fig, ax = plt.subplots(figsize=(8, 8))
 
-#######################################################################################
-
 # Limite del sistema, es la distancia desde el Sol hasta el borde del cuadro, en AU
+# Toma el ultimo cuerpo en el diccionario de datos_planetas y le suma 1 AU de margen
 limite = list(datos_planetas.values())[-1]['r'] + 1.0
 
 #######################################################################################
@@ -107,7 +135,10 @@ ax.set_ylim(-limite, limite)
 
 ax.set_aspect('equal') # Para que las orbitas sean circulares, no ovaladas
 ax.grid(True)
-ax.set_title(f"Simulacion N-Cuerpos (Euler) con h={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
+if metodo_elegido in metodos_fijo:
+    ax.set_title(f"Simulacion N-Cuerpos ({metodo_elegido}) con h={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
+else:
+    ax.set_title(f"Simulacion N-Cuerpos ({metodo_elegido}), rtol={tolerancia}, pasos={len(ts)}, tiempo total={n_pasos*h} años terrestres")
 ax.set_facecolor("white")
 
 lineas = []
@@ -129,21 +160,19 @@ ax.legend(loc="lower right", fontsize='small')
 # blit=True: optimizacion gráfica (solo redibuja lo que cambia)
 print("Generando grafica (esto tomara un tiempo)...")
 salto = int(1/(10*h))
-indices_frames = range(0, len(ts_ee), salto)
+indices_frames = range(0, len(ts), salto)
 
 #Creacion del "video"
-ani = FuncAnimation(fig, fn.update, frames=indices_frames, interval=20, blit=True, fargs=(n_cuerpos, lineas, puntos, ys_ee, ts_ee, texto_tiempo))
+ani = FuncAnimation(fig, fn.update, frames=indices_frames, interval=20, blit=True, fargs=(n_cuerpos, lineas, puntos, ys, ts, texto_tiempo))
 
 plt.show()
 
 
 # --- VALIDACION DE LA SIMULACION: CONSERVACION DE LA ENERGIA ---
 
-
-
 # --- EJECUTAR EL CÁLCULO ---
 print("Verificando conservacion de energia...")
-Energias = fn.Calcular_Energia_Sistema(ys_ee, masas)
+Energias = fn.Calcular_Energia_Sistema(ys, masas)
 
 # Calculamos el error relativo: (E_actual - E_inicial) / E_inicial
 # Esto nos dice qué porcentaje de energia se "perdio" o "creo" falsamente
@@ -152,8 +181,11 @@ error_relativo = (Energias - E0) / np.abs(E0)
 
 # --- GRAFICAR ---
 plt.figure(figsize=(10, 5))
-plt.plot(ts_ee, error_relativo, label='Error Relativo de Energia (Euler Explicito)')
-plt.title(f"Validacion: Conservacion de la Energia Total\nh={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
+plt.plot(ts, error_relativo, label=f'Error Relativo de Energia ({metodo_elegido})')
+if metodo_elegido in metodos_fijo:
+    plt.title(f"Validacion: Conservacion de la Energia Total\nh={h}, pasos={n_pasos}, tiempo total={n_pasos*h} años terrestres")
+else:
+    plt.title(f"Validacion: Conservacion de la Energia Total\nrtol={tolerancia}, tiempo total={n_pasos*h} años terrestres")
 plt.xlabel("Tiempo (Años)")
 plt.ylabel("Error Relativo de Energia")
 plt.grid(True)
@@ -165,16 +197,24 @@ plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
 
 plt.show()
 
+# Si se esta en un Jupyter Notebook, se puede embeber la animacion directamente
+#plt.close() # Evita que se muestre una imagen estática extra vacia
+#HTML(ani.to_jshtml())
 
+
+####### Grafica del error en escala logaritmica
 
 plt.figure(figsize=(10, 6))
 # Usamos semilogy: Eje Y logarítmico, Eje X lineal (tiempo)
-plt.semilogy(ts_ee, np.abs(error_relativo), label='Euler (Fijo)')
+plt.semilogy(ts, np.abs(error_relativo), label='f{metodo_elegido}')
 
-# Opcional: Si comparas con Euler
-# plt.semilogy(ts_euler, error_euler, label='Euler (Explícito)')
+# Opcional: Si comparas con {metodo_elegido}
+# plt.semilogy(ts_euler, error_euler, label='{metodo_elegido} (Explícito)')
 
-plt.title(f"Evolución del Error de Energía de Euler \ncon un h={h} (Escala Logarítmica)")
+if metodo_elegido in metodos_fijo:
+    plt.title(f"Evolución del Error de Energía de {metodo_elegido} \ncon un h={h} (Escala Logarítmica)")
+else:
+    plt.title(f"Evolución del Error de Energía de {metodo_elegido} \ncon una tolerancia relativa de {tolerancia} (Escala Logarítmica)")
 plt.xlabel("Tiempo (Años)")
 plt.ylabel("Log(Error Relativo)")
 plt.grid(True, which="both", ls="-") # Grid para escala log
@@ -185,14 +225,11 @@ plt.show()
 max_error = np.abs(error_relativo)[-1]
 print(f"Error maximo relativo: {max_error:.2e}")
 
-# Usar en lugar del "show" para Jupyter Notebooks
-#plt.close() # Evita que se muestre una imagen estática extra vacia
-#HTML(ani.to_jshtml())
-
 # Guardar como GIF
 #print("Guardando animacion como GIF...")
 #ani.save('D:/Videos/Euler_0.1.gif', writer='pillow', fps=30)
 #print("Animacion guardada.")
 
 # O Guardar como MP4 (Mejor calidad)
+#print("Guardando animacion como video MP4...")
 #ani.save('D:/Videos/Euler_0.0001.mp4', writer='ffmpeg', fps=30)
